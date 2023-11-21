@@ -34,14 +34,14 @@ type GroupListResponse struct {
 	Version   string      `json:"version"`
 }
 
-func (c *Client) GroupFind(criteria string, options Options) ([]*Group, error) {
+func (c *Client) GroupFind(criteria []string, options Options) ([]*Group, error) {
 	if options == nil {
 		options = Options{}
 	}
 
 	options["all"] = true
 
-	body, err := c.RequestBody("group_find", []string{criteria}, options)
+	body, err := c.RequestBody("group_find", criteria, options)
 	if err != nil {
 		return nil, err
 	}
