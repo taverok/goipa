@@ -1,4 +1,4 @@
-module github.com/ubccr/goipa
+module github.com/taverok/goipa
 
 go 1.14
 
