@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -257,6 +258,67 @@ func (c *Client) rpc(method string, params []string, options Options) (*Response
 	}
 
 	return &ipaRes, nil
+}
+
+func (c *Client) RequestBody(method string, params []string, options Options) ([]byte, error) {
+	if options == nil {
+		options = Options{}
+	}
+	options["version"] = IpaClientVersion
+
+	data := []interface{}{
+		params,
+		options,
+	}
+
+	payload := Options{
+		"id":     0,
+		"method": method,
+		"params": data,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	ipaUrl := fmt.Sprintf("https://%s/ipa/json", c.host)
+	if len(c.sessionID) > 0 {
+		ipaUrl = fmt.Sprintf("https://%s/ipa/session/json", c.host)
+	}
+
+	req, err := http.NewRequest("POST", ipaUrl, bytes.NewBuffer(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Referer", fmt.Sprintf("https://%s/ipa/xml", c.host))
+
+	if len(c.sessionID) > 0 {
+		// If session is set, use the session id
+		req.Header.Set("Cookie", fmt.Sprintf("ipa_session=%s", c.sessionID))
+	} else if c.krbClient != nil {
+		// use Kerberos auth (SPNEGO)
+		spnego.SetSPNEGOHeader(c.krbClient, req, "")
+	}
+
+	if log.IsLevelEnabled(log.TraceLevel) {
+		dump, _ := httputil.DumpRequestOut(req, true)
+		log.Tracef("FreeIPA RPC request: %s", dump)
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("IPA RPC called failed with HTTP status code: %d", res.StatusCode)
+	}
+
+	if err = c.setSessionID(res); err != nil {
+		return nil, err
+	}
+
+	return io.ReadAll(res.Body)
 }
 
 // Returns FreeIPA server hostname
